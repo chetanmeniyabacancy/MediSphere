@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { writeAuditEvent } from "@/lib/audit";
+import { requireRole } from "@/lib/compliance/rbac";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
 import type { AppointmentStatus } from "@/lib/types";
 
@@ -9,6 +11,11 @@ function errorResponse(message: string, status = 500) {
 }
 
 export async function GET(request: Request) {
+  const roleCheck = requireRole(request, ["admin", "provider", "billing", "staff"]);
+  if (roleCheck.denial) {
+    return roleCheck.denial;
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return errorResponse(getSupabaseConfigError());
@@ -37,6 +44,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const roleCheck = requireRole(request, ["admin", "provider", "staff"]);
+  if (roleCheck.denial) {
+    return roleCheck.denial;
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return errorResponse(getSupabaseConfigError());
@@ -76,6 +88,15 @@ export async function POST(request: Request) {
   if (error) {
     return errorResponse(error.message, 400);
   }
+  const created = data as { id?: string } | null;
+
+  await writeAuditEvent(supabase, {
+    action: "appointment.create.api",
+    actor_role: roleCheck.role,
+    entity_type: "appointments",
+    entity_id: created?.id ?? null,
+    metadata: { patient_id: patientId, status: payload.status },
+  });
 
   return NextResponse.json({ data }, { status: 201 });
 }

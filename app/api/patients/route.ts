@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { writeAuditEvent } from "@/lib/audit";
+import { requireRole } from "@/lib/compliance/rbac";
 import { hashPassword } from "@/lib/auth/password";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
 import type { Gender } from "@/lib/types";
@@ -9,7 +11,12 @@ function errorResponse(message: string, status = 500) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const roleCheck = requireRole(request, ["admin", "provider", "billing", "staff"]);
+  if (roleCheck.denial) {
+    return roleCheck.denial;
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return errorResponse(getSupabaseConfigError());
@@ -29,6 +36,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const roleCheck = requireRole(request, ["admin", "staff"]);
+  if (roleCheck.denial) {
+    return roleCheck.denial;
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return errorResponse(getSupabaseConfigError());
@@ -80,6 +92,15 @@ export async function POST(request: Request) {
   if (error) {
     return errorResponse(error.message, 400);
   }
+  const created = data as { id?: string; email?: string | null } | null;
+
+  await writeAuditEvent(supabase, {
+    action: "patient.create.api",
+    actor_role: roleCheck.role,
+    entity_type: "patients",
+    entity_id: created?.id ?? null,
+    metadata: { email: created?.email ?? null },
+  });
 
   return NextResponse.json({ data }, { status: 201 });
 }

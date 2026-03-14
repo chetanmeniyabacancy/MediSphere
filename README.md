@@ -6,10 +6,13 @@ It includes:
 - Patient record management
 - Appointment scheduling
 - Clinical documentation
+- Primary-care templates + preventive care gap workflows
+- e-Prescribing (Rx CRUD with allergy/interaction safety checks)
 - Billing claim management
 - Lab result tracking
 - Patient portal (login, appointments, labs, messages)
 - REST API routes for core resources
+- RBAC + audit trail foundations for compliance hardening
 
 ## Stack
 
@@ -36,7 +39,10 @@ Set values in `.env.local`:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` is recommended for backend/API server routes, especially with strict RLS.
 
 3. Apply schema in Supabase SQL editor:
 
@@ -59,6 +65,8 @@ Open `http://localhost:3000`.
 - `/medical-records`
 - `/billing`
 - `/lab-results`
+- `/primary-care`
+- `/prescriptions`
 - `/reports`
 - `/settings`
 - `/admin`
@@ -75,16 +83,25 @@ Open `http://localhost:3000`.
 - `GET, POST /api/medical-records`
 - `GET, POST /api/billing`
 - `GET, POST /api/labs`
+- `GET, POST /api/primary-care-gaps`
+- `GET, POST /api/prescriptions`
 - `GET /api/reports`
 - `POST /api/patient-auth/login`
 - `POST /api/patient-auth/logout`
 - `POST /api/patient-auth/set-password` (localhost only)
 
-## Notes
+## Compliance Notes
 
-- Current RLS policies in `schema.sql` allow broad dev access (`anon`, `authenticated`) for MVP speed.
-- Harden policies for production by role and patient ownership.
-- Add immutable audit logs before production rollout.
+- `supabase/schema.sql` keeps broad dev-access policies for local MVP speed.
+- `supabase/rls_hardening.sql` applies strict RBAC + patient ownership RLS for production.
+- Apply strict RLS only after backend routes use service-role writes.
+
+### Production Hardening Order
+
+1. Run `supabase/schema.sql`.
+2. Validate app/API with service-role key configured.
+3. Run `supabase/rls_hardening.sql`.
+4. Ensure JWT claims include `app_role` and (for patient users) `patient_id`.
 
 ## Manual Patient Login (No Supabase Auth)
 

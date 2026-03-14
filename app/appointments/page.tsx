@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { writeAuditEvent } from "@/lib/audit";
 import { PageHeader } from "@/components/page-header";
 import { formatDateTime, patientDisplayName } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
@@ -31,13 +32,27 @@ async function createAppointment(formData: FormData) {
     return;
   }
 
-  await supabase.from("appointments").insert({
-    patient_id: patientId,
-    provider_name: providerName,
-    scheduled_at: parsedDate.toISOString(),
-    status: statuses.includes(status) ? status : "scheduled",
-    notes: notes || null,
-  });
+  const insertRes = await supabase
+    .from("appointments")
+    .insert({
+      patient_id: patientId,
+      provider_name: providerName,
+      scheduled_at: parsedDate.toISOString(),
+      status: statuses.includes(status) ? status : "scheduled",
+      notes: notes || null,
+    })
+    .select("id")
+    .single();
+
+  if (!insertRes.error && insertRes.data?.id) {
+    await writeAuditEvent(supabase, {
+      action: "appointment.create",
+      actor_role: "staff",
+      entity_type: "appointments",
+      entity_id: insertRes.data.id,
+      metadata: { patient_id: patientId, status },
+    });
+  }
 
   revalidatePath("/");
   revalidatePath("/appointments");

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { PageHeader } from "@/components/page-header";
 import { getLoggedInPatient } from "@/lib/auth/patient-session";
+import { writeAuditEvent } from "@/lib/audit";
 import { formatDateTime, patientDisplayName } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
 import type { PatientMessage } from "@/lib/types";
@@ -23,12 +24,27 @@ async function sendPatientMessage(formData: FormData) {
     return;
   }
 
-  await supabase.from("patient_messages").insert({
-    patient_id: patient.id,
-    sender_role: "patient",
-    subject,
-    body,
-  });
+  const insertRes = await supabase
+    .from("patient_messages")
+    .insert({
+      patient_id: patient.id,
+      sender_role: "patient",
+      subject,
+      body,
+    })
+    .select("id")
+    .single();
+
+  if (!insertRes.error && insertRes.data?.id) {
+    await writeAuditEvent(supabase, {
+      action: "patient_message.create.portal",
+      actor_role: "patient",
+      actor_id: patient.id,
+      entity_type: "patient_messages",
+      entity_id: insertRes.data.id,
+      metadata: { patient_id: patient.id, subject },
+    });
+  }
 
   revalidatePath("/patient-portal/messages");
   revalidatePath("/reports");

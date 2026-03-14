@@ -2,7 +2,13 @@ import { MetricCard } from "@/components/metric-card";
 import { PageHeader } from "@/components/page-header";
 import { formatPercent } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { Appointment, BillingClaim } from "@/lib/types";
+import type {
+  Appointment,
+  BillingClaim,
+  Prescription,
+  PrimaryCareGap,
+  AuditLog,
+} from "@/lib/types";
 
 export default async function ReportsPage() {
   const supabase = getSupabaseServerClient();
@@ -21,15 +27,21 @@ export default async function ReportsPage() {
     );
   }
 
-  const [patientsRes, appointmentsRes, claimsRes, messagesRes] = await Promise.all([
+  const [patientsRes, appointmentsRes, claimsRes, messagesRes, prescriptionsRes, careGapsRes, auditRes] = await Promise.all([
     supabase.from("patients").select("id", { count: "exact", head: true }),
     supabase.from("appointments").select("id, provider_name, status"),
     supabase.from("billing_claims").select("id, status"),
     supabase.from("patient_messages").select("id", { count: "exact", head: true }),
+    supabase.from("prescriptions").select("id, status"),
+    supabase.from("primary_care_gaps").select("id, status"),
+    supabase.from("audit_logs").select("id, created_at").order("created_at", { ascending: false }).limit(1000),
   ]);
 
   const appointments = (appointmentsRes.data ?? []) as Appointment[];
   const claims = (claimsRes.data ?? []) as BillingClaim[];
+  const prescriptions = (prescriptionsRes.data ?? []) as Prescription[];
+  const careGaps = (careGapsRes.data ?? []) as PrimaryCareGap[];
+  const auditEvents = (auditRes.data ?? []) as AuditLog[];
 
   const completedAppointments = appointments.filter((item) => item.status === "completed").length;
   const uniqueProviders = new Set(appointments.map((item) => item.provider_name)).size;
@@ -41,6 +53,8 @@ export default async function ReportsPage() {
   const billingSuccessRate = claims.length === 0 ? 0 : paidClaims / claims.length;
   const claimAcceptanceRate = decidedClaims === 0 ? 0 : paidClaims / decidedClaims;
   const providerProductivity = uniqueProviders === 0 ? 0 : completedAppointments / uniqueProviders;
+  const pendingReviewPrescriptions = prescriptions.filter((item) => item.status === "pending_review").length;
+  const openCareGaps = careGaps.filter((item) => item.status === "open").length;
 
   return (
     <section className="stack">
@@ -80,6 +94,21 @@ export default async function ReportsPage() {
           value="External"
           caption="Track via hosting/APM observability"
         />
+        <MetricCard
+          label="Rx Safety Queue"
+          value={pendingReviewPrescriptions}
+          caption="Pending-review prescriptions with alerts"
+        />
+        <MetricCard
+          label="Open Care Gaps"
+          value={openCareGaps}
+          caption="Preventive tasks pending completion"
+        />
+        <MetricCard
+          label="Audit Events"
+          value={auditEvents.length}
+          caption="Recorded compliance activity entries"
+        />
       </section>
 
       <article className="panel">
@@ -93,6 +122,9 @@ export default async function ReportsPage() {
           </p>
           <p className="notice">
             <strong>Portal usage</strong> is currently measured via message volume; add appointment self-book and report views for richer adoption tracking.
+          </p>
+          <p className="notice">
+            <strong>Rx safety queue and care gaps</strong> reflect primary-care quality workflow follow-through.
           </p>
         </div>
       </article>

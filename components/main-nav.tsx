@@ -13,6 +13,8 @@ const clinicLinks: NavLink[] = [
   { href: "/patients", label: "Patients" },
   { href: "/appointments", label: "Appointments" },
   { href: "/medical-records", label: "Medical Records" },
+  { href: "/primary-care", label: "Primary Care" },
+  { href: "/prescriptions", label: "Prescriptions" },
   { href: "/billing", label: "Billing" },
   { href: "/lab-results", label: "Lab Results" },
   { href: "/reports", label: "Reports" },

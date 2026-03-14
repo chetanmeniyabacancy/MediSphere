@@ -3,7 +3,12 @@ import { MetricCard } from "@/components/metric-card";
 import { PageHeader } from "@/components/page-header";
 import { formatDateTime, patientDisplayName } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { Appointment, BillingClaim, Patient } from "@/lib/types";
+import type {
+  Appointment,
+  BillingClaim,
+  Prescription,
+  PrimaryCareGap,
+} from "@/lib/types";
 
 export default async function DashboardPage() {
   const supabase = getSupabaseServerClient();
@@ -22,11 +27,13 @@ export default async function DashboardPage() {
     );
   }
 
-  const [patientsRes, appointmentsRes, notesRes, claimsRes] = await Promise.all([
+  const [patientsRes, appointmentsRes, notesRes, claimsRes, prescriptionsRes, careGapsRes] = await Promise.all([
     supabase.from("patients").select("id", { count: "exact", head: true }),
     supabase.from("appointments").select("id", { count: "exact", head: true }),
     supabase.from("clinical_notes").select("id", { count: "exact", head: true }),
     supabase.from("billing_claims").select("id, status"),
+    supabase.from("prescriptions").select("id, status"),
+    supabase.from("primary_care_gaps").select("id, status"),
   ]);
 
   const upcomingRes = await supabase
@@ -47,14 +54,20 @@ export default async function DashboardPage() {
       .in("id", appointmentPatientIds);
 
     (upcomingPatientsRes.data ?? []).forEach((patient) => {
-      patientNameMap.set(patient.id, patientDisplayName(patient as Patient));
+      patientNameMap.set(patient.id, patientDisplayName(patient));
     });
   }
 
   const claims = (claimsRes.data ?? []) as BillingClaim[];
+  const prescriptions = (prescriptionsRes.data ?? []) as Prescription[];
+  const careGaps = (careGapsRes.data ?? []) as PrimaryCareGap[];
   const paidClaims = claims.filter((claim) => claim.status === "paid").length;
   const submittedClaims = claims.filter((claim) => claim.status === "submitted").length;
   const totalClaims = claims.length;
+  const pendingReviewPrescriptions = prescriptions.filter(
+    (prescription) => prescription.status === "pending_review",
+  ).length;
+  const openCareGaps = careGaps.filter((gap) => gap.status === "open").length;
 
   return (
     <section className="stack">
@@ -68,6 +81,8 @@ export default async function DashboardPage() {
         <MetricCard label="Appointments" value={appointmentsRes.count ?? 0} caption="All statuses" />
         <MetricCard label="Clinical Notes" value={notesRes.count ?? 0} caption="Documentation volume" />
         <MetricCard label="Claims Paid" value={`${paidClaims}/${totalClaims}`} caption="Paid over total claims" />
+        <MetricCard label="Rx Pending Review" value={pendingReviewPrescriptions} caption="Safety alerts needing review" />
+        <MetricCard label="Open Care Gaps" value={openCareGaps} caption="Preventive primary-care follow-ups" />
       </section>
 
       <section className="grid-2">
@@ -115,6 +130,12 @@ export default async function DashboardPage() {
             </Link>
             <Link className="button button-secondary" href="/medical-records">
               Add Clinical Note
+            </Link>
+            <Link className="button button-secondary" href="/primary-care">
+              Primary Care Templates
+            </Link>
+            <Link className="button button-secondary" href="/prescriptions">
+              Create Prescription
             </Link>
             <Link className="button button-secondary" href="/billing">
               Create Claim

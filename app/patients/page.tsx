@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { writeAuditEvent } from "@/lib/audit";
 import { hashPassword } from "@/lib/auth/password";
 import { PageHeader } from "@/components/page-header";
 import { formatDate, patientDisplayName } from "@/lib/format";
@@ -32,17 +33,31 @@ async function createPatient(formData: FormData) {
   const passwordHash =
     portalPassword.trim().length >= 6 ? hashPassword(portalPassword.trim()) : null;
 
-  await supabase.from("patients").insert({
-    first_name: firstName,
-    last_name: lastName,
-    dob,
-    gender: genders.includes(gender) ? gender : "unknown",
-    phone: phone || null,
-    email: email || null,
-    insurance_provider: insuranceProvider || null,
-    insurance_member_id: insuranceMemberId || null,
-    password_hash: passwordHash,
-  });
+  const insertRes = await supabase
+    .from("patients")
+    .insert({
+      first_name: firstName,
+      last_name: lastName,
+      dob,
+      gender: genders.includes(gender) ? gender : "unknown",
+      phone: phone || null,
+      email: email || null,
+      insurance_provider: insuranceProvider || null,
+      insurance_member_id: insuranceMemberId || null,
+      password_hash: passwordHash,
+    })
+    .select("id")
+    .single();
+
+  if (!insertRes.error && insertRes.data?.id) {
+    await writeAuditEvent(supabase, {
+      action: "patient.create",
+      actor_role: "staff",
+      entity_type: "patients",
+      entity_id: insertRes.data.id,
+      metadata: { email: email || null },
+    });
+  }
 
   revalidatePath("/");
   revalidatePath("/patients");
@@ -50,6 +65,8 @@ async function createPatient(formData: FormData) {
   revalidatePath("/medical-records");
   revalidatePath("/billing");
   revalidatePath("/lab-results");
+  revalidatePath("/primary-care");
+  revalidatePath("/prescriptions");
   revalidatePath("/patient-portal/appointments");
   revalidatePath("/patient-portal/lab-results");
   revalidatePath("/patient-portal/messages");

@@ -10,15 +10,18 @@ export function getSupabaseServerClient(): SupabaseClient<Database> | null {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseKey = supabaseServiceRoleKey || supabaseAnonKey;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabaseKey) {
     cachedClient = null;
     return cachedClient;
   }
 
-  cachedClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  cachedClient = createClient<Database>(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,
+      autoRefreshToken: false,
     },
     global: {
       fetch: (input, init = {}) =>
@@ -33,8 +36,8 @@ export function getSupabaseServerClient(): SupabaseClient<Database> | null {
 }
 
 export function getSupabaseConfigError(): string {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.";
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && !process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+    return "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and at least one key (NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY).";
   }
 
   return "";

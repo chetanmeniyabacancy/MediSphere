@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { writeAuditEvent } from "@/lib/audit";
 import { PageHeader } from "@/components/page-header";
 import { formatDate, patientDisplayName } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
@@ -24,13 +25,27 @@ async function addClinicalNote(formData: FormData) {
     return;
   }
 
-  await supabase.from("clinical_notes").insert({
-    patient_id: patientId,
-    provider_name: providerName,
-    encounter_date: encounterDate,
-    diagnosis_code: diagnosisCode || null,
-    note,
-  });
+  const insertRes = await supabase
+    .from("clinical_notes")
+    .insert({
+      patient_id: patientId,
+      provider_name: providerName,
+      encounter_date: encounterDate,
+      diagnosis_code: diagnosisCode || null,
+      note,
+    })
+    .select("id")
+    .single();
+
+  if (!insertRes.error && insertRes.data?.id) {
+    await writeAuditEvent(supabase, {
+      action: "clinical_note.create",
+      actor_role: "provider",
+      entity_type: "clinical_notes",
+      entity_id: insertRes.data.id,
+      metadata: { patient_id: patientId, diagnosis_code: diagnosisCode || null },
+    });
+  }
 
   revalidatePath("/");
   revalidatePath("/medical-records");

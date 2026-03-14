@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { writeAuditEvent } from "@/lib/audit";
+import { requireRole } from "@/lib/compliance/rbac";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
 
 function errorResponse(message: string, status = 500) {
@@ -6,6 +8,11 @@ function errorResponse(message: string, status = 500) {
 }
 
 export async function GET(request: Request) {
+  const roleCheck = requireRole(request, ["admin", "provider", "staff", "billing"]);
+  if (roleCheck.denial) {
+    return roleCheck.denial;
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return errorResponse(getSupabaseConfigError());
@@ -34,6 +41,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const roleCheck = requireRole(request, ["admin", "provider", "staff"]);
+  if (roleCheck.denial) {
+    return roleCheck.denial;
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return errorResponse(getSupabaseConfigError());
@@ -71,6 +83,15 @@ export async function POST(request: Request) {
   if (error) {
     return errorResponse(error.message, 400);
   }
+  const created = data as { id?: string } | null;
+
+  await writeAuditEvent(supabase, {
+    action: "lab_result.create.api",
+    actor_role: roleCheck.role,
+    entity_type: "lab_results",
+    entity_id: created?.id ?? null,
+    metadata: { patient_id: patientId, test_name: testName },
+  });
 
   return NextResponse.json({ data }, { status: 201 });
 }

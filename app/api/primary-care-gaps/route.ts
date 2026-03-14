@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { writeAuditEvent } from "@/lib/audit";
 import { requireRole } from "@/lib/compliance/rbac";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
+import type { CareGapStatus } from "@/lib/types";
+
+const statuses: CareGapStatus[] = ["open", "completed", "dismissed"];
 
 function errorResponse(message: string, status = 500) {
   return NextResponse.json({ error: message }, { status });
 }
 
 export async function GET(request: Request) {
-  const roleCheck = requireRole(request, ["admin", "provider", "staff"]);
+  const roleCheck = requireRole(request, ["admin", "provider", "staff", "billing"]);
   if (roleCheck.denial) {
     return roleCheck.denial;
   }
@@ -22,9 +25,9 @@ export async function GET(request: Request) {
   const patientId = url.searchParams.get("patientId");
 
   let query = supabase
-    .from("clinical_notes")
-    .select("id, patient_id, provider_name, encounter_date, diagnosis_code, note, created_at")
-    .order("encounter_date", { ascending: false })
+    .from("primary_care_gaps")
+    .select("id, patient_id, gap_type, due_date, status, notes, created_at")
+    .order("due_date", { ascending: true })
     .limit(200);
 
   if (patientId) {
@@ -41,7 +44,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const roleCheck = requireRole(request, ["admin", "provider"]);
+  const roleCheck = requireRole(request, ["admin", "provider", "staff"]);
   if (roleCheck.denial) {
     return roleCheck.denial;
   }
@@ -53,29 +56,32 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     patient_id?: string;
-    provider_name?: string;
-    encounter_date?: string;
-    diagnosis_code?: string;
-    note?: string;
+    gap_type?: string;
+    due_date?: string;
+    status?: CareGapStatus;
+    notes?: string;
   };
 
   const patientId = body.patient_id?.trim() ?? "";
-  const providerName = body.provider_name?.trim() ?? "";
-  const encounterDate = body.encounter_date?.trim() ?? "";
-  const note = body.note?.trim() ?? "";
+  const gapType = body.gap_type?.trim() ?? "";
+  const dueDate = body.due_date?.trim() ?? "";
+  const status = (body.status ?? "open") as CareGapStatus;
 
-  if (!patientId || !providerName || !encounterDate || !note) {
-    return errorResponse("patient_id, provider_name, encounter_date, and note are required.", 400);
+  if (!patientId || !gapType || !dueDate || !statuses.includes(status)) {
+    return errorResponse(
+      "patient_id, gap_type, due_date, and a valid status are required.",
+      400,
+    );
   }
 
   const { data, error } = await supabase
-    .from("clinical_notes")
+    .from("primary_care_gaps")
     .insert({
       patient_id: patientId,
-      provider_name: providerName,
-      encounter_date: encounterDate,
-      diagnosis_code: body.diagnosis_code?.trim() || null,
-      note,
+      gap_type: gapType,
+      due_date: dueDate,
+      status,
+      notes: body.notes?.trim() || null,
     })
     .select("*")
     .single();
@@ -86,11 +92,11 @@ export async function POST(request: Request) {
   const created = data as { id?: string } | null;
 
   await writeAuditEvent(supabase, {
-    action: "clinical_note.create.api",
+    action: "primary_care_gap.create.api",
     actor_role: roleCheck.role,
-    entity_type: "clinical_notes",
+    entity_type: "primary_care_gaps",
     entity_id: created?.id ?? null,
-    metadata: { patient_id: patientId, diagnosis_code: body.diagnosis_code?.trim() || null },
+    metadata: { patient_id: patientId, gap_type: gapType },
   });
 
   return NextResponse.json({ data }, { status: 201 });

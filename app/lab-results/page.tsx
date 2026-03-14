@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { writeAuditEvent } from "@/lib/audit";
 import { PageHeader } from "@/components/page-header";
 import { formatDate, patientDisplayName } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
@@ -24,13 +25,27 @@ async function createLabResult(formData: FormData) {
     return;
   }
 
-  await supabase.from("lab_results").insert({
-    patient_id: patientId,
-    test_name: testName,
-    result_value: resultValue,
-    reference_range: referenceRange || null,
-    collected_at: collectedAt,
-  });
+  const insertRes = await supabase
+    .from("lab_results")
+    .insert({
+      patient_id: patientId,
+      test_name: testName,
+      result_value: resultValue,
+      reference_range: referenceRange || null,
+      collected_at: collectedAt,
+    })
+    .select("id")
+    .single();
+
+  if (!insertRes.error && insertRes.data?.id) {
+    await writeAuditEvent(supabase, {
+      action: "lab_result.create",
+      actor_role: "provider",
+      entity_type: "lab_results",
+      entity_id: insertRes.data.id,
+      metadata: { patient_id: patientId, test_name: testName },
+    });
+  }
 
   revalidatePath("/");
   revalidatePath("/lab-results");

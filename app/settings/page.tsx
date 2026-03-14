@@ -6,6 +6,8 @@ const securityChecklist = [
   "Role-based access control (admin/provider/staff/patient)",
   "Secure authentication via Supabase Auth/JWT",
   "Data retention and PHI-safe logging policy",
+  "Production RLS hardening via supabase/rls_hardening.sql and app_role JWT claims",
+  "Backend writes through server-side service role key",
 ];
 
 export default function SettingsPage() {

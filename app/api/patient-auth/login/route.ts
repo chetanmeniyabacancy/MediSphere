@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyPassword } from "@/lib/auth/password";
+import { writeAuditEvent } from "@/lib/audit";
 import {
   createPatientSessionToken,
   PATIENT_SESSION_COOKIE,
@@ -64,6 +65,14 @@ export async function POST(request: Request) {
   const patient = ((data ?? [])[0] ?? null) as (Patient & { password_hash?: string | null }) | null;
 
   if (!patient || !patient.email || !verifyPassword(password, patient.password_hash)) {
+    await writeAuditEvent(supabase, {
+      action: "patient.login.failed",
+      actor_role: "patient",
+      entity_type: "patients",
+      entity_id: patient?.id ?? null,
+      metadata: { email },
+    });
+
     return errorResponse("Invalid email or password.", 401);
   }
 
@@ -84,6 +93,15 @@ export async function POST(request: Request) {
       email: patient.email,
       name: `${patient.first_name} ${patient.last_name}`.trim(),
     },
+  });
+
+  await writeAuditEvent(supabase, {
+    action: "patient.login.success",
+    actor_role: "patient",
+    actor_id: patient.id,
+    entity_type: "patients",
+    entity_id: patient.id,
+    metadata: { email: patient.email },
   });
 
   response.cookies.set({

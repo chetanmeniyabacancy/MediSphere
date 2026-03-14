@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { writeAuditEvent } from "@/lib/audit";
 import { PageHeader } from "@/components/page-header";
 import { formatCurrency, formatDate, patientDisplayName } from "@/lib/format";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
@@ -31,13 +32,27 @@ async function createClaim(formData: FormData) {
     return;
   }
 
-  await supabase.from("billing_claims").insert({
-    patient_id: patientId,
-    cpt_code: cptCode,
-    icd10_code: icd10Code,
-    amount,
-    status: claimStatuses.includes(status) ? status : "draft",
-  });
+  const insertRes = await supabase
+    .from("billing_claims")
+    .insert({
+      patient_id: patientId,
+      cpt_code: cptCode,
+      icd10_code: icd10Code,
+      amount,
+      status: claimStatuses.includes(status) ? status : "draft",
+    })
+    .select("id")
+    .single();
+
+  if (!insertRes.error && insertRes.data?.id) {
+    await writeAuditEvent(supabase, {
+      action: "billing_claim.create",
+      actor_role: "billing",
+      entity_type: "billing_claims",
+      entity_id: insertRes.data.id,
+      metadata: { patient_id: patientId, cpt_code: cptCode, icd10_code: icd10Code },
+    });
+  }
 
   revalidatePath("/");
   revalidatePath("/billing");

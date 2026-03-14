@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { hashPassword } from "@/lib/auth/password";
+import { writeAuditEvent } from "@/lib/audit";
 import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
 import type { Patient } from "@/lib/types";
 
@@ -84,6 +85,14 @@ export async function POST(request: Request) {
   if (updateError) {
     return errorResponse(updateError.message, 400);
   }
+
+  await writeAuditEvent(supabase, {
+    action: "patient.password.set_localhost",
+    actor_role: "staff",
+    entity_type: "patients",
+    entity_id: patient.id,
+    metadata: { email: patient.email },
+  });
 
   return NextResponse.json({
     data: {

@@ -81,6 +81,55 @@ create table if not exists public.patient_messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.patient_allergies (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  allergen text not null,
+  reaction text,
+  severity text not null default 'moderate' check (severity in ('mild', 'moderate', 'severe')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.prescriptions (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  prescribed_by text not null,
+  medication_name text not null,
+  dosage text not null,
+  frequency text not null,
+  route text,
+  start_date date not null,
+  end_date date,
+  instructions text,
+  status text not null default 'active' check (status in ('active', 'stopped', 'pending_review')),
+  safety_alerts text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.primary_care_gaps (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  gap_type text not null,
+  due_date date not null,
+  status text not null default 'open' check (status in ('open', 'completed', 'dismissed')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  action text not null,
+  actor_role text not null,
+  actor_id text,
+  entity_type text not null,
+  entity_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_patients_last_name on public.patients(last_name);
 create index if not exists idx_patients_email on public.patients(email);
 create index if not exists idx_appointments_patient_id on public.appointments(patient_id);
@@ -89,6 +138,13 @@ create index if not exists idx_clinical_notes_patient_id on public.clinical_note
 create index if not exists idx_billing_claims_patient_id on public.billing_claims(patient_id);
 create index if not exists idx_lab_results_patient_id on public.lab_results(patient_id);
 create index if not exists idx_patient_messages_patient_id on public.patient_messages(patient_id);
+create index if not exists idx_patient_allergies_patient_id on public.patient_allergies(patient_id);
+create index if not exists idx_prescriptions_patient_id on public.prescriptions(patient_id);
+create index if not exists idx_prescriptions_status on public.prescriptions(status);
+create index if not exists idx_primary_care_gaps_patient_id on public.primary_care_gaps(patient_id);
+create index if not exists idx_primary_care_gaps_status on public.primary_care_gaps(status);
+create index if not exists idx_audit_logs_created_at on public.audit_logs(created_at);
+create index if not exists idx_audit_logs_entity on public.audit_logs(entity_type, entity_id);
 
 drop trigger if exists trg_patients_set_updated_at on public.patients;
 create trigger trg_patients_set_updated_at
@@ -114,12 +170,34 @@ before update on public.billing_claims
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists trg_patient_allergies_set_updated_at on public.patient_allergies;
+create trigger trg_patient_allergies_set_updated_at
+before update on public.patient_allergies
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists trg_prescriptions_set_updated_at on public.prescriptions;
+create trigger trg_prescriptions_set_updated_at
+before update on public.prescriptions
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists trg_primary_care_gaps_set_updated_at on public.primary_care_gaps;
+create trigger trg_primary_care_gaps_set_updated_at
+before update on public.primary_care_gaps
+for each row
+execute function public.set_updated_at();
+
 alter table public.patients enable row level security;
 alter table public.appointments enable row level security;
 alter table public.clinical_notes enable row level security;
 alter table public.billing_claims enable row level security;
 alter table public.lab_results enable row level security;
 alter table public.patient_messages enable row level security;
+alter table public.patient_allergies enable row level security;
+alter table public.prescriptions enable row level security;
+alter table public.primary_care_gaps enable row level security;
+alter table public.audit_logs enable row level security;
 
 drop policy if exists "dev_full_access_patients" on public.patients;
 drop policy if exists "dev_full_access_appointments" on public.appointments;
@@ -127,6 +205,10 @@ drop policy if exists "dev_full_access_clinical_notes" on public.clinical_notes;
 drop policy if exists "dev_full_access_billing_claims" on public.billing_claims;
 drop policy if exists "dev_full_access_lab_results" on public.lab_results;
 drop policy if exists "dev_full_access_patient_messages" on public.patient_messages;
+drop policy if exists "dev_full_access_patient_allergies" on public.patient_allergies;
+drop policy if exists "dev_full_access_prescriptions" on public.prescriptions;
+drop policy if exists "dev_full_access_primary_care_gaps" on public.primary_care_gaps;
+drop policy if exists "dev_full_access_audit_logs" on public.audit_logs;
 
 create policy "dev_full_access_patients"
 on public.patients
@@ -169,3 +251,41 @@ for all
 to anon, authenticated
 using (true)
 with check (true);
+
+create policy "dev_full_access_patient_allergies"
+on public.patient_allergies
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+create policy "dev_full_access_prescriptions"
+on public.prescriptions
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+create policy "dev_full_access_primary_care_gaps"
+on public.primary_care_gaps
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+create policy "dev_full_access_audit_logs"
+on public.audit_logs
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+-- Production hardening reference (enable when using JWT app_role claims):
+-- drop policy if exists "dev_full_access_prescriptions" on public.prescriptions;
+-- create policy "rbac_read_prescriptions" on public.prescriptions
+-- for select to authenticated
+-- using ((auth.jwt()->>'app_role') in ('admin','provider','billing','staff'));
+-- create policy "rbac_write_prescriptions" on public.prescriptions
+-- for all to authenticated
+-- using ((auth.jwt()->>'app_role') in ('admin','provider'))
+-- with check ((auth.jwt()->>'app_role') in ('admin','provider'));
