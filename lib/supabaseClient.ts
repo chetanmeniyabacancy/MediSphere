@@ -1,15 +1,3 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient } from "@/lib/supabase/client";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const supabase: SupabaseClient | null =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
-
-export type Product = {
-  id: string;
-  name: string;
-  created_at: string;
-};
+export const supabase = getSupabaseServerClient();

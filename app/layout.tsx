@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { MainNav } from "@/components/main-nav";
 
 export const metadata: Metadata = {
-  title: "Hackathon 2026",
-  description: "Minimal Next.js 14 app with Supabase",
+  title: "MedFlow AI",
+  description: "AI-powered EHR platform with Next.js and Supabase",
 };
+
+export const dynamic = "force-dynamic";
 
 export default function RootLayout({
   children,
@@ -13,7 +16,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <div className="app-shell">
+          <MainNav />
+          <main className="content-shell">{children}</main>
+        </div>
+      </body>
     </html>
   );
 }

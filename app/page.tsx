@@ -1,75 +1,139 @@
-import { revalidatePath } from "next/cache";
-import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
+import { MetricCard } from "@/components/metric-card";
+import { PageHeader } from "@/components/page-header";
+import { formatDateTime, patientDisplayName } from "@/lib/format";
+import { getSupabaseConfigError, getSupabaseServerClient } from "@/lib/supabase/client";
+import type { Appointment, BillingClaim, Patient } from "@/lib/types";
 
-async function addTestProduct() {
-  "use server";
-  if (supabase) {
-    await supabase.from("products").insert({
-      name: `Test Product ${Date.now()}`,
+export default async function DashboardPage() {
+  const supabase = getSupabaseServerClient();
+
+  if (!supabase) {
+    return (
+      <section className="stack">
+        <PageHeader
+          title="Dashboard"
+          description="Operational snapshot for your clinic, billing, and patient workflows."
+        />
+        <div className="panel">
+          <p className="notice notice-error">{getSupabaseConfigError()}</p>
+        </div>
+      </section>
+    );
+  }
+
+  const [patientsRes, appointmentsRes, notesRes, claimsRes] = await Promise.all([
+    supabase.from("patients").select("id", { count: "exact", head: true }),
+    supabase.from("appointments").select("id", { count: "exact", head: true }),
+    supabase.from("clinical_notes").select("id", { count: "exact", head: true }),
+    supabase.from("billing_claims").select("id, status"),
+  ]);
+
+  const upcomingRes = await supabase
+    .from("appointments")
+    .select("id, patient_id, provider_name, scheduled_at, status")
+    .gte("scheduled_at", new Date().toISOString())
+    .order("scheduled_at", { ascending: true })
+    .limit(8);
+
+  const upcoming = (upcomingRes.data ?? []) as Appointment[];
+  const appointmentPatientIds = Array.from(new Set(upcoming.map((appt) => appt.patient_id)));
+
+  const patientNameMap = new Map<string, string>();
+  if (appointmentPatientIds.length > 0) {
+    const upcomingPatientsRes = await supabase
+      .from("patients")
+      .select("id, first_name, last_name")
+      .in("id", appointmentPatientIds);
+
+    (upcomingPatientsRes.data ?? []).forEach((patient) => {
+      patientNameMap.set(patient.id, patientDisplayName(patient as Patient));
     });
   }
-  revalidatePath("/");
-}
 
-export default async function Home() {
-  const { data: products, error } = supabase
-    ? await supabase
-        .from("products")
-        .select("id, name, created_at")
-        .order("created_at", { ascending: false })
-    : { data: null, error: { message: "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY." } };
+  const claims = (claimsRes.data ?? []) as BillingClaim[];
+  const paidClaims = claims.filter((claim) => claim.status === "paid").length;
+  const submittedClaims = claims.filter((claim) => claim.status === "submitted").length;
+  const totalClaims = claims.length;
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 600, margin: "0 auto" }}>
-      <h1 style={{ marginBottom: "1rem" }}>Products</h1>
+    <section className="stack">
+      <PageHeader
+        title="Dashboard"
+        description="Live KPI summary for patient records, scheduling, documentation, and claims."
+      />
 
-      <form action={addTestProduct} style={{ marginBottom: "1.5rem" }}>
-        <button
-          type="submit"
-          style={{
-            padding: "0.5rem 1rem",
-            background: "#000",
-            color: "#fff",
-            border: "none",
-            borderRadius: 4,
-            cursor: "pointer",
-          }}
-        >
-          Add Test Product
-        </button>
-      </form>
+      <section className="grid-4">
+        <MetricCard label="Total Patients" value={patientsRes.count ?? 0} caption="Registered patient profiles" />
+        <MetricCard label="Appointments" value={appointmentsRes.count ?? 0} caption="All statuses" />
+        <MetricCard label="Clinical Notes" value={notesRes.count ?? 0} caption="Documentation volume" />
+        <MetricCard label="Claims Paid" value={`${paidClaims}/${totalClaims}`} caption="Paid over total claims" />
+      </section>
 
-      {error && (
-        <p style={{ color: "crimson", marginBottom: "1rem" }}>
-          Error loading products: {error.message}
-        </p>
-      )}
+      <section className="grid-2">
+        <article className="panel">
+          <h3>Upcoming Appointments</h3>
+          {upcoming.length === 0 ? (
+            <p className="notice">No future appointments found.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Patient</th>
+                    <th>Provider</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcoming.map((appt) => (
+                    <tr key={appt.id}>
+                      <td>{formatDateTime(appt.scheduled_at)}</td>
+                      <td>{patientNameMap.get(appt.patient_id) ?? appt.patient_id}</td>
+                      <td>{appt.provider_name}</td>
+                      <td>
+                        <span className="badge">{appt.status.replace("_", " ")}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
 
-      {products && products.length === 0 && !error && (
-        <p style={{ color: "#666" }}>No products yet. Click the button above to add one.</p>
-      )}
+        <article className="panel panel-muted">
+          <h3>Quick Actions</h3>
+          <p className="small">Create core records required by the MVP workflow.</p>
+          <div className="inline-links" style={{ marginTop: "0.75rem" }}>
+            <Link className="button" href="/patients">
+              Add Patient
+            </Link>
+            <Link className="button button-secondary" href="/appointments">
+              Schedule Appointment
+            </Link>
+            <Link className="button button-secondary" href="/medical-records">
+              Add Clinical Note
+            </Link>
+            <Link className="button button-secondary" href="/billing">
+              Create Claim
+            </Link>
+            <Link className="button button-secondary" href="/patient-portal">
+              Open Patient Portal
+            </Link>
+          </div>
 
-      {products && products.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0 }}>
-          {products.map((p) => (
-            <li
-              key={p.id}
-              style={{
-                padding: "0.75rem",
-                border: "1px solid #eee",
-                borderRadius: 4,
-                marginBottom: "0.5rem",
-              }}
-            >
-              <strong>{p.name}</strong>
-              <br />
-              <small style={{ color: "#666" }}>
-                {new Date(p.created_at).toLocaleString()}
-              </small>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+          <div className="stack" style={{ marginTop: "1rem" }}>
+            <p className="notice">
+              Billing signal: <strong>{submittedClaims}</strong> claims currently in submitted state and waiting for payer response.
+            </p>
+            <p className="notice">
+              Use <Link href="/reports">Reports</Link> for claim acceptance rate and patient throughput metrics.
+            </p>
+          </div>
+        </article>
+      </section>
+    </section>
   );
 }

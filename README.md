@@ -1,84 +1,105 @@
-# Hackathon 2026
+# MedFlow AI
 
-Minimal Next.js 14 app (App Router) with Supabase: list products and add test records.
+MedFlow AI is a cloud-first EHR MVP built with **Next.js (App Router), TypeScript, and Supabase**.
 
-## Prerequisites
+It includes:
+- Patient record management
+- Appointment scheduling
+- Clinical documentation
+- Billing claim management
+- Lab result tracking
+- Patient portal (login, appointments, labs, messages)
+- REST API routes for core resources
 
-- Node.js 18+
-- A [Supabase](https://supabase.com) project
+## Stack
 
-## 1. Create the `products` table in Supabase
+- Next.js 14 + TypeScript
+- Supabase (`@supabase/supabase-js`)
+- Postgres schema defined in `supabase/schema.sql`
 
-In the Supabase Dashboard, open **SQL Editor** and run:
+## Quick Start
 
-```sql
-create table if not exists products (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  created_at timestamptz not null default now()
-);
+1. Install dependencies:
 
--- Optional: allow anonymous read/write for testing (tighten in production)
-alter table products enable row level security;
-
-create policy "Allow all for products"
-  on products for all
-  using (true)
-  with check (true);
+```bash
+npm install
 ```
 
-## 2. Environment variables
-
-Copy the example file and fill in your Supabase values:
+2. Configure environment:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Edit `.env.local`:
-
-- **NEXT_PUBLIC_SUPABASE_URL** – Supabase project URL  
-  **Dashboard → Project Settings → API → Project URL**
-- **NEXT_PUBLIC_SUPABASE_ANON_KEY** – Supabase anon (public) key  
-  **Dashboard → Project Settings → API → Project API keys → anon public**
-
-Example:
+Set values in `.env.local`:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ```
 
-For **Vercel**: add the same variables in **Project → Settings → Environment Variables** (or in the deploy flow as in the Build & Output settings screen).
+3. Apply schema in Supabase SQL editor:
 
-## 3. Run locally
+- Open Supabase Dashboard -> SQL Editor
+- Run `supabase/schema.sql`
+
+4. Start the app:
 
 ```bash
-npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open `http://localhost:3000`.
 
-## 4. Test the Supabase connection
+## App Routes
 
-1. **UI**: On the home page you should see either:
-   - “No products yet” and no error, or  
-   - A list of products  
-   If you see “Error loading products: …”, check `.env.local` and that the `products` table and RLS policy exist.
+- `/` Dashboard
+- `/patients`
+- `/appointments`
+- `/medical-records`
+- `/billing`
+- `/lab-results`
+- `/reports`
+- `/settings`
+- `/admin`
+- `/patient-portal`
+- `/patient-portal/login`
+- `/patient-portal/appointments`
+- `/patient-portal/lab-results`
+- `/patient-portal/messages`
 
-2. **Add a row**: Click **Add Test Product**. A new row should appear in the list. That confirms both read and write work.
+## API Routes
 
-3. **Supabase Dashboard**: In **Table Editor → products** you should see the same rows.
+- `GET, POST /api/patients`
+- `GET, POST /api/appointments`
+- `GET, POST /api/medical-records`
+- `GET, POST /api/billing`
+- `GET, POST /api/labs`
+- `GET /api/reports`
+- `POST /api/patient-auth/login`
+- `POST /api/patient-auth/logout`
+- `POST /api/patient-auth/set-password` (localhost only)
 
-## Deploy on Vercel
+## Notes
 
-1. Push the repo to GitHub and import the project in Vercel.
-2. Add **NEXT_PUBLIC_SUPABASE_URL** and **NEXT_PUBLIC_SUPABASE_ANON_KEY** in Vercel (Settings → Environment Variables or during deploy).
-3. Deploy. Build command: `npm run build`. Output: default Next.js (no override needed).
+- Current RLS policies in `schema.sql` allow broad dev access (`anon`, `authenticated`) for MVP speed.
+- Harden policies for production by role and patient ownership.
+- Add immutable audit logs before production rollout.
 
-## Tech stack
+## Manual Patient Login (No Supabase Auth)
 
-- Next.js 14 (App Router)
-- TypeScript
-- Supabase (`@supabase/supabase-js`)
+This project supports manual patient login with passwords hashed in the `patients.password_hash` column.
+
+1. Add to `.env.local`:
+
+```env
+ENABLE_MANUAL_PATIENT_AUTH=true
+MANUAL_AUTH_SECRET=<long-random-secret>
+```
+
+2. Restart dev server.
+3. Open `/patient-portal/login` and use **Set Password**.
+4. Enter an existing patient email + password.
+5. Switch to **Sign In**.
+
+`/api/patient-auth/set-password` is intentionally limited to localhost requests.
