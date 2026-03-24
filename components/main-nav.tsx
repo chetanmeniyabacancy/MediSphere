@@ -40,7 +40,7 @@ export function MainNav() {
   return (
     <header className="topbar">
       <div className="topbar-title-wrap">
-        <h1 className="topbar-title">MedFlow AIww</h1>
+        <h1 className="topbar-title">MedFlow AI22</h1>
         <p className="topbar-subtitle">Cloud EHR and patient operations workspace</p>
       </div>
 
