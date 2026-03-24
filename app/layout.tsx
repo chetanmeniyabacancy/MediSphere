@@ -3,7 +3,7 @@ import "./globals.css";
 import { MainNav } from "@/components/main-nav";
 
 export const metadata: Metadata = {
-  title: "MedFlow AI",
+  title: "MedFlow AI1",
   description: "AI-powered EHR platform with Next.js and Supabase",
 };
 
